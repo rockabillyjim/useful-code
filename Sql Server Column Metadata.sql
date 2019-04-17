@@ -1,23 +1,35 @@
+WITH
+
+PKs as (
+SELECT
+	pk.[object_id],
+	pkc.[column_id],
+	pkc.[index_column_id]
+FROM sys.indexes pk
+JOIN sys.index_columns pkc
+	ON pkc.[object_id] = pk.[object_id]
+	AND pkc.[index_id] = pk.[index_id]
+WHERE pk.[is_primary_key] = 1
+)
+
 SELECT
 	s.[name] as [Schema],
 	o.[name] as [Entity],
 	CASE o.[type]
 		WHEN 'U' THEN 'Table'
 		WHEN 'V' THEN 'View'
+		WHEN 'IF' THEN 'Table Valued Function'
+		WHEN 'TF' THEN 'Table Valued Function'
 	END as [Entity Type],
-	c.[column_id] as [Column Number],
+	c.[column_id] as [Column #],
 	c.[name] as [Column],
 	CASE c.[is_nullable]
 		WHEN 1 THEN 'Nullable'
 		ELSE 'Not Nullable'
 	END as [Nullable],
 	CASE
-		WHEN st.[name] = 'bigint' THEN st.[name]
 		WHEN st.[name] = 'binary' THEN st.[name] + '(' + CAST(c.[max_length] as varchar) + ')'
-		WHEN st.[name] = 'bit' THEN st.[name]
 		WHEN st.[name] = 'char' THEN st.[name] + '(' + CAST(c.[max_length] as varchar) + ')'
-		WHEN st.[name] = 'date' THEN st.[name]
-		WHEN st.[name] = 'datetime' THEN st.[name]
 		WHEN st.[name] = 'datetime2' THEN st.[name] + '(' + CAST(c.[precision] as varchar) + ')'
 		WHEN st.[name] = 'datetimeoffset' THEN st.[name] + '(' + CAST(c.[scale] as varchar) + ')'
 		WHEN st.[name] = 'decimal' THEN st.[name] + '(' + CAST(c.[precision] as varchar) + ',' + CAST(c.[scale] as varchar) + ')'
@@ -25,39 +37,26 @@ SELECT
 		WHEN ut.[name] = 'geography' THEN ut.[name]
 		WHEN ut.[name] = 'geometry' THEN ut.[name]
 		WHEN ut.[name] = 'hierarchyid' THEN ut.[name]
-		WHEN st.[name] = 'image' THEN st.[name]
-		WHEN st.[name] = 'int' THEN st.[name]
-		WHEN st.[name] = 'money' THEN st.[name]
 		WHEN st.[name] = 'nchar' THEN st.[name] + '(' + CAST(c.[max_length] / 2 as varchar) + ')'
-		WHEN st.[name] = 'ntext' THEN st.[name]
 		WHEN st.[name] = 'numeric' THEN st.[name] + '(' + CAST(c.[precision] as varchar) + ',' + CAST(c.[scale] as varchar) + ')'
 		WHEN st.[name] = 'nvarchar' AND c.[max_length] = -1 THEN st.[name] + '(max)'
 		WHEN st.[name] = 'nvarchar' THEN st.[name] + '(' + CAST(c.[max_length] / 2 as varchar) + ')'
 		WHEN st.[name] = 'real' THEN st.[name]
-		WHEN st.[name] = 'smalldatetime' THEN st.[name]
-		WHEN st.[name] = 'smallint' THEN st.[name]
-		WHEN st.[name] = 'smallmoney' THEN st.[name]
-		WHEN st.[name] = 'sql_variant' THEN st.[name]
-		WHEN st.[name] = 'text' THEN st.[name]
 		WHEN st.[name] = 'time' THEN st.[name] + '(' + CAST(c.[scale] as varchar) + ')'
-		WHEN st.[name] = 'timestamp' THEN st.[name]
-		WHEN st.[name] = 'tinyint' THEN st.[name]
-		WHEN st.[name] = 'uniqueidentifier' THEN st.[name]
 		WHEN st.[name] = 'varbinary' AND c.[max_length] = -1 THEN st.[name] + '(max)'
 		WHEN st.[name] = 'varbinary' THEN st.[name] + '(' + CAST(c.[max_length] as varchar) + ')'
 		WHEN st.[name] = 'varchar' AND c.[max_length] = -1 THEN st.[name] + '(max)'
 		WHEN st.[name] = 'varchar' THEN st.[name] + '(' + CAST(c.[max_length] as varchar) + ')'
-		WHEN st.[name] = 'xml' THEN st.[name]
+		ELSE st.[name]
 	END as [Data Type],
 	ut.[name] as [User Data Type],
-	st.[name] as [System Data Type],
-	c.[max_length] as [Length (in bytes)],
-	c.[precision] as [Precision],
-	c.[scale] as [Scale],
 	c.[collation_name] as [Collation],
 	dc.[definition] as [Default],
-	c.is_identity,
-	c.is_rowguidcol
+	cc.[definition] as [Computed Definition],
+	PKs.index_column_id as [PK Column #],
+	CASE c.is_identity WHEN 1 THEN 'Identity' END as [Identity],
+	CASE c.is_rowguidcol WHEN 1 THEN 'Row GUID' END as [Row GUID],
+	c.[object_id]
 FROM sys.columns c
 JOIN sys.objects o
 	ON o.[object_id] = c.[object_id]
@@ -69,7 +68,13 @@ LEFT JOIN sys.types st
 	ON st.[user_type_id] = ut.[system_type_id]
 LEFT JOIN sys.default_constraints dc
 	ON dc.[object_id] = c.[default_object_id]
--- WHERE o.[type] IN ('U', 'V')
+LEFT JOIN sys.computed_columns cc
+	ON cc.[object_id] = c.[object_id]
+	AND cc.[column_id] = c.[column_id]
+LEFT JOIN PKs
+	ON PKs.[object_id] = c.[object_id]
+	AND PKs.[column_id] = c.[column_id]
+WHERE o.[is_ms_shipped] = 0
 ORDER BY
 	s.[name],
 	o.[name],
